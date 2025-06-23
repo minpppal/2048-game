@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from "react";
+"use client";
+import React, { useState, useEffect, useRef } from "react";
 import Tile from "./Tile";
+import useGameStatesStore from "@/store/gameStatesStore";
+import GameOverModal from "../modal/GameOverModal";
 
 const TileBox: React.FC = () => {
+  const { gameOver, setGameOver, setGameScore, newGame, setNewGame } =
+    useGameStatesStore();
   const [tileNumbers, setTileNumbers] = useState<(number | null)[]>(
     Array(16).fill(null)
   );
-
+  const scoreIncrease = useRef(0);
   /**
    * 랜덤 숫자 추가 함수
    */
@@ -17,7 +22,6 @@ const TileBox: React.FC = () => {
         .filter((index): index is number => index !== null);
 
       if (emptyIndices.length === 0) {
-        alert("Game Over!");
         return prevTiles; // 빈 칸이 없으면 아무 것도 하지 않음
       }
 
@@ -34,16 +38,25 @@ const TileBox: React.FC = () => {
 
   // 게임 시작 시 초기 숫자 2개 추가
   useEffect(() => {
-    addRandomTile(); // 첫 번째 숫자 추가
-    console.log("첫번째숫자");
-    addRandomTile(); // 두 번째 숫자 추가
-    console.log("두번째숫자");
-  }, []); // 컴포넌트가 처음 렌더링될 때만 실행
+    if (newGame) {
+      setTileNumbers(Array(16).fill(null)); // 타일을 초기화
+      scoreIncrease.current = 0; // 점수 초기화
+      setGameScore(0); // 점수 상태 초기화
+      addRandomTile(); // 첫 번째 숫자 추가
+      addRandomTile(); // 두 번째 숫자 추가
+    }
+  }, [newGame]); // `newGame` 상태가 변경될 때마다 실행
+
+  // 첫 렌더링 시 newGame을 true로 설정하여 타일이 생성되도록 설정
+  useEffect(() => {
+    setNewGame(true); // 첫 번째 렌더링 시 newGame을 true로 설정
+  }, []); // 빈 배열로 두어 처음 한 번만 실행되도록 설정
 
   /**
    * 방향키 입력 처리
    */
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (gameOver) return;
     switch (event.key) {
       case "ArrowUp":
         moveTiles("up");
@@ -71,7 +84,9 @@ const TileBox: React.FC = () => {
    */
   const moveTiles = (direction: "up" | "down" | "left" | "right") => {
     setTileNumbers((prevTiles) => {
+      let score = 0;
       const newTiles = [...prevTiles]; // 새로운 배열 복사
+
       if (direction === "left" || direction === "right") {
         for (let i = 0; i < 4; i++) {
           // 각 행을 추출
@@ -83,6 +98,7 @@ const TileBox: React.FC = () => {
           for (let j = 0; j < row.length; j++) {
             if (row[j] === row[j + 1]) {
               row[j] = row[j]! * 2;
+              score += row[j] ?? 0;
               row[j + 1] = null; //뒤 숫자는 null로 변환
             }
           }
@@ -114,6 +130,7 @@ const TileBox: React.FC = () => {
           for (let j = 0; j < column.length; j++) {
             if (column[j] === column[j + 1]) {
               column[j] = column[j]! * 2;
+              score += column[j] ?? 0;
               column[j + 1] = null;
             }
           }
@@ -139,21 +156,74 @@ const TileBox: React.FC = () => {
       if (isChanged) {
         addRandomTile();
       }
+      // scoreIncrease.ref에 직접 할당
+      scoreIncrease.current += score;
       return newTiles;
     });
   };
 
+  useEffect(() => {
+    setGameScore(scoreIncrease.current);
+  }, [tileNumbers]);
+
+  //2번씩 실행되는거 막아주는거
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
+
+  /**
+   * 게임 종료 체크
+   */
+  const checkGameOver = () => {
+    const fullNumbers = tileNumbers.every((tile) => tile !== null); //타일에 null이 안들어있으면 전부 숫자로 차있음
+    console.log("타일이 가득 찼는지 확인:", fullNumbers);
+    //숫자가 가득차지 않으면 종료
+    if (!fullNumbers) {
+      return;
+    }
+    // 모든 타일이 꽉 찬 경우, 합쳐질 수 있는 타일이 있는지 확인
+    for (let i = 0; i < 16; i++) {
+      if (i % 4 !== 0 && tileNumbers[i] === tileNumbers[i - 1]) {
+        return false;
+      }
+
+      if (i % 4 !== 3 && tileNumbers[i] === tileNumbers[i + 1]) {
+        return false;
+      }
+
+      if (i >= 4 && tileNumbers[i] === tileNumbers[i - 4]) {
+        return false;
+      }
+
+      if (i <= 11 && tileNumbers[i] === tileNumbers[i + 4]) {
+        return false;
+      }
+    }
+    console.log("게임 종료!");
+    setGameOver(true);
+    return true;
+  };
+
+  // 게임 종료 체크를 useEffect로 처리 (렌더링 후에 체크)
+  useEffect(() => {
+    if (checkGameOver()) {
+      setGameOver(true); // 게임 종료 상태 업데이트
+    }
+  }, [tileNumbers]); // 타일 숫자가 변경될 때마다 실행
+
   return (
-    <div className="bg-orange-200 p-4  rounded-lg shadow-lg w-[466px] h-[480px] flex flex-wrap  box-border gap-4">
-      {tileNumbers.map((num, index) => (
-        <Tile key={index} number={num} />
-      ))}
+    <div className="relative w-[466px] h-[480px] flex flex-wrap gap-4">
+      {/* 게임 진행 중에 모달이 덮어씌워지도록 설정 */}
+      {gameOver && <GameOverModal />}
+
+      <div className="bg-orange-200 p-4 rounded-lg shadow-lg w-full h-full flex flex-wrap gap-4">
+        {tileNumbers.map((num, index) => (
+          <Tile key={index} number={num} />
+        ))}
+      </div>
     </div>
   );
 };

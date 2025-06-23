@@ -16,8 +16,8 @@ jobs:
           # 최신 커밋 메시지 추출
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
-          # 커밋 메시지에서 해시 제거
-          PR_TITLE=$(echo "$COMMIT_MSG" | sed 's/#[0-9a-f]\{40\}//g')  # 커밋 해시(40자리)를 제거
+          # 'Merge'와 'into' 키워드 및 40자리 커밋 해시 제거
+          PR_TITLE=$(echo "$COMMIT_MSG" | sed 's/Merge.*into//g' | sed 's/[0-9a-f]\{40\}//g')
 
           # PR 제목 설정
           curl -X PATCH \
